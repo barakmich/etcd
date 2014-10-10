@@ -1,9 +1,20 @@
 package etcdserver
 
 import (
+	"fmt"
 	"reflect"
 	"testing"
+
+	"github.com/coreos/etcd/pkg/types"
 )
+
+func urls(strs []string) types.URLs {
+	out, err := types.NewURLs(strs)
+	if err != nil {
+		fmt.Println("Error!", err)
+	}
+	return out
+}
 
 func TestClusterAddSlice(t *testing.T) {
 	tests := []struct {
@@ -18,18 +29,18 @@ func TestClusterAddSlice(t *testing.T) {
 		},
 		{
 			[]Member{
-				{ID: 1, PeerURLs: []string{"foo", "bar"}},
-				{ID: 2, PeerURLs: []string{"baz"}},
+				{ID: 1, PeerURLs: urls([]string{"http://foo:1", "http://bar:1"})},
+				{ID: 2, PeerURLs: urls([]string{"http://baz:1"})},
 			},
 
 			&Cluster{
 				1: &Member{
 					ID:       1,
-					PeerURLs: []string{"foo", "bar"},
+					PeerURLs: urls([]string{"http://foo:1", "http://bar:1"}),
 				},
 				2: &Member{
 					ID:       2,
-					PeerURLs: []string{"baz"},
+					PeerURLs: urls([]string{"http://baz:1"}),
 				},
 			},
 		},
@@ -57,34 +68,34 @@ func TestClusterAddSliceBad(t *testing.T) {
 
 func TestClusterPick(t *testing.T) {
 	cs := Cluster{
-		1: &Member{ID: 1, PeerURLs: []string{"abc", "def", "ghi", "jkl", "mno", "pqr", "stu"}},
-		2: &Member{ID: 2, PeerURLs: []string{"xyz"}},
-		3: &Member{ID: 3, PeerURLs: []string{}},
+		1: &Member{ID: 1, PeerURLs: urls([]string{"http://abc:1", "http://def:1", "http://ghi:1", "http://jkl:1", "http://mno:1", "http://pqr:1", "http://stu:1"})},
+		2: &Member{ID: 2, PeerURLs: urls([]string{"http://xyz:1"})},
+		3: &Member{ID: 3, PeerURLs: types.URLs{}},
 	}
 	ids := map[string]bool{
-		"abc": true,
-		"def": true,
-		"ghi": true,
-		"jkl": true,
-		"mno": true,
-		"pqr": true,
-		"stu": true,
+		"http://abc:1": true,
+		"http://def:1": true,
+		"http://ghi:1": true,
+		"http://jkl:1": true,
+		"http://mno:1": true,
+		"http://pqr:1": true,
+		"http://stu:1": true,
 	}
 	for i := 0; i < 1000; i++ {
 		a := cs.Pick(1)
-		if !ids[a] {
+		if !ids[a.String()] {
 			t.Errorf("returned ID %q not in expected range!", a)
 			break
 		}
 	}
-	if b := cs.Pick(2); b != "xyz" {
-		t.Errorf("id=%q, want %q", b, "xyz")
+	if b := cs.Pick(2); b.String() != "http://xyz:1" {
+		t.Errorf("id=%q, want %q", b, "http://xyz:1")
 	}
-	if c := cs.Pick(3); c != "" {
-		t.Errorf("id=%q, want %q", c, "")
+	if c := cs.Pick(3); c != nil {
+		t.Errorf("id=%q, want %v", c, nil)
 	}
-	if d := cs.Pick(4); d != "" {
-		t.Errorf("id=%q, want %q", d, "")
+	if d := cs.Pick(4); d != nil {
+		t.Errorf("id=%q, want %v", d, nil)
 	}
 }
 
@@ -120,21 +131,6 @@ func TestClusterFind(t *testing.T) {
 			false,
 		},
 	}
-	for i, tt := range tests {
-		c := Cluster{}
-		c.AddSlice(tt.mems)
-
-		m := c.FindName(tt.name)
-		if m == nil && !tt.match {
-			continue
-		}
-		if m == nil && tt.match {
-			t.Errorf("#%d: expected match got empty", i)
-		}
-		if m.Name != tt.name && tt.match {
-			t.Errorf("#%d: got = %v, want %v", i, m.Name, tt.name)
-		}
-	}
 
 	for i, tt := range tests {
 		c := Cluster{}
@@ -161,9 +157,9 @@ func TestClusterSet(t *testing.T) {
 		{
 			"mem1=http://10.0.0.1:2379,mem1=http://128.193.4.20:2379,mem2=http://10.0.0.2:2379,default=http://127.0.0.1:2379",
 			[]Member{
-				{ID: 3736794188555456841, Name: "mem1", PeerURLs: []string{"http://10.0.0.1:2379", "http://128.193.4.20:2379"}},
-				{ID: 5674507346857578431, Name: "mem2", PeerURLs: []string{"http://10.0.0.2:2379"}},
-				{ID: 2676999861503984872, Name: "default", PeerURLs: []string{"http://127.0.0.1:2379"}},
+				{ID: 3736794188555456841, Name: "mem1", PeerURLs: urls([]string{"http://10.0.0.1:2379", "http://128.193.4.20:2379"})},
+				{ID: 5674507346857578431, Name: "mem2", PeerURLs: urls([]string{"http://10.0.0.2:2379"})},
+				{ID: 2676999861503984872, Name: "default", PeerURLs: urls([]string{"http://127.0.0.1:2379"})},
 			},
 		},
 	}
@@ -237,15 +233,7 @@ func TestClusterPeerURLs(t *testing.T) {
 		// single peer with a single address
 		{
 			mems: []Member{
-				{ID: 1, PeerURLs: []string{"http://192.0.2.1"}},
-			},
-			wurls: []string{"http://192.0.2.1"},
-		},
-
-		// single peer with a single address with a port
-		{
-			mems: []Member{
-				{ID: 1, PeerURLs: []string{"http://192.0.2.1:8001"}},
+				{ID: 1, PeerURLs: urls([]string{"http://192.0.2.1:8001"})},
 			},
 			wurls: []string{"http://192.0.2.1:8001"},
 		},
@@ -253,11 +241,11 @@ func TestClusterPeerURLs(t *testing.T) {
 		// several members explicitly unsorted
 		{
 			mems: []Member{
-				{ID: 2, PeerURLs: []string{"http://192.0.2.3", "http://192.0.2.4"}},
-				{ID: 3, PeerURLs: []string{"http://192.0.2.5", "http://192.0.2.6"}},
-				{ID: 1, PeerURLs: []string{"http://192.0.2.1", "http://192.0.2.2"}},
+				{ID: 2, PeerURLs: urls([]string{"http://192.0.2.3:80", "http://192.0.2.4:80"})},
+				{ID: 3, PeerURLs: urls([]string{"http://192.0.2.5:80", "http://192.0.2.6:80"})},
+				{ID: 1, PeerURLs: urls([]string{"http://192.0.2.1:80", "http://192.0.2.2:80"})},
 			},
-			wurls: []string{"http://192.0.2.1", "http://192.0.2.2", "http://192.0.2.3", "http://192.0.2.4", "http://192.0.2.5", "http://192.0.2.6"},
+			wurls: []string{"http://192.0.2.1:80", "http://192.0.2.2:80", "http://192.0.2.3:80", "http://192.0.2.4:80", "http://192.0.2.5:80", "http://192.0.2.6:80"},
 		},
 
 		// no members
@@ -269,7 +257,7 @@ func TestClusterPeerURLs(t *testing.T) {
 		// peer with no peer urls
 		{
 			mems: []Member{
-				{ID: 3, PeerURLs: []string{}},
+				{ID: 3, PeerURLs: types.URLs{}},
 			},
 			wurls: []string{},
 		},

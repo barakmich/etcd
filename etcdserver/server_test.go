@@ -798,7 +798,7 @@ func TestAddMember(t *testing.T) {
 		ClusterStore: cs,
 	}
 	s.start()
-	m := Member{ID: 1, PeerURLs: []string{"foo"}}
+	m := Member{ID: 1, PeerURLs: urls([]string{"http://foo:8001"})}
 	s.AddMember(context.TODO(), m)
 	gaction := n.Action()
 	s.Stop()
@@ -871,6 +871,7 @@ func TestPublish(t *testing.T) {
 	w := &waitWithResponse{ch: ch}
 	srv := &EtcdServer{
 		name:         "node1",
+		id:           1,
 		clientURLs:   []url.URL{{Scheme: "http", Host: "a"}, {Scheme: "http", Host: "b"}},
 		node:         n,
 		ClusterStore: cs,
@@ -906,6 +907,7 @@ func TestPublish(t *testing.T) {
 func TestPublishStopped(t *testing.T) {
 	cs := mustClusterStore(t, []Member{{ID: 1, Name: "node1"}})
 	srv := &EtcdServer{
+		id:           1,
 		name:         "node1",
 		node:         &nodeRecorder{},
 		ClusterStore: cs,
@@ -921,6 +923,7 @@ func TestPublishRetry(t *testing.T) {
 	n := &nodeRecorder{}
 	cs := mustClusterStore(t, []Member{{ID: 1, Name: "node1"}})
 	srv := &EtcdServer{
+		id:           1,
 		name:         "node1",
 		node:         n,
 		ClusterStore: cs,

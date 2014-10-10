@@ -5,29 +5,35 @@ import (
 	"encoding/binary"
 	"fmt"
 	"path"
+	"sort"
 	"strconv"
+	"strings"
 	"time"
 
+	"github.com/coreos/etcd/pkg/flags"
 	"github.com/coreos/etcd/pkg/types"
 )
 
 const machineKVPrefix = "/_etcd/machines/"
 
 type Member struct {
-	ID   uint64
+	ID uint64
+	// Name is purely advisory. May be empty.
 	Name string
-	// TODO(philips): ensure these are URLs
-	PeerURLs   []string
+
+	PeerURLs   types.URLs
 	ClientURLs []string
 }
 
-// newMember creates a Member without an ID and generates one based on the
+// NewMember creates a Member without an ID and generates one based on the
 // name, peer URLs. This is used for bootstrapping.
 func newMember(name string, peerURLs types.URLs, now *time.Time) *Member {
-	m := &Member{Name: name, PeerURLs: peerURLs.StringSlice()}
+	m := &Member{Name: name, PeerURLs: peerURLs}
 
-	b := []byte(m.Name)
-	for _, p := range m.PeerURLs {
+	var b []byte
+	peerURLstrings := m.PeerURLs.StringSlice()
+	sort.Strings(peerURLstrings)
+	for _, p := range peerURLstrings {
 		b = append(b, []byte(p)...)
 	}
 
@@ -38,6 +44,14 @@ func newMember(name string, peerURLs types.URLs, now *time.Time) *Member {
 	hash := sha1.Sum(b)
 	m.ID = binary.BigEndian.Uint64(hash[:8])
 	return m
+}
+
+func NewMember(name string, peers []string) *Member {
+	return newMember(name, types.URLs(*flags.NewURLsValue(strings.Join(peers, ","))), nil)
+}
+
+func NewMemberFromURLs(name string, peers types.URLs) *Member {
+	return newMember(name, peers, nil)
 }
 
 func (m Member) storeKey() string {

@@ -98,11 +98,10 @@ func NewServer(cfg *ServerConfig) *EtcdServer {
 	st := store.New()
 	var w *wal.WAL
 	var n raft.Node
-	m := cfg.Cluster.FindName(cfg.Name)
 	waldir := path.Join(cfg.DataDir, "wal")
 	if !wal.Exist(waldir) {
 		if cfg.DiscoveryURL != "" {
-			d, err := discovery.New(cfg.DiscoveryURL, m.ID, cfg.Cluster.String())
+			d, err := discovery.New(cfg.DiscoveryURL, cfg.LocalMember.ID, cfg.Cluster.String())
 			if err != nil {
 				log.Fatalf("etcd: cannot init discovery %v", err)
 			}
@@ -120,7 +119,7 @@ func NewServer(cfg *ServerConfig) *EtcdServer {
 			log.Fatal(err)
 		}
 		// TODO: add context for PeerURLs
-		n = raft.StartNode(m.ID, cfg.Cluster.IDs(), 10, 1)
+		n = raft.StartNode(cfg.LocalMember.ID, cfg.Cluster.IDs(), 10, 1)
 	} else {
 		if cfg.DiscoveryURL != "" {
 			log.Printf("etcd: warn: ignoring discovery URL: etcd has already been initialized and has a valid log in %q", waldir)
@@ -148,7 +147,7 @@ func NewServer(cfg *ServerConfig) *EtcdServer {
 		if wid != 0 {
 			log.Fatalf("unexpected nodeid %d: nodeid should always be zero until we save nodeid into wal", wid)
 		}
-		n = raft.RestartNode(m.ID, cfg.Cluster.IDs(), 10, 1, snapshot, st, ents)
+		n = raft.RestartNode(cfg.LocalMember.ID, cfg.Cluster.IDs(), 10, 1, snapshot, st, ents)
 	}
 
 	cls := NewClusterStore(st, *cfg.Cluster)
@@ -156,7 +155,8 @@ func NewServer(cfg *ServerConfig) *EtcdServer {
 	s := &EtcdServer{
 		store: st,
 		node:  n,
-		name:  cfg.Name,
+		id:    cfg.LocalMember.ID,
+		name:  cfg.LocalMember.Name,
 		storage: struct {
 			*wal.WAL
 			*snap.Snapshotter
@@ -175,6 +175,7 @@ func NewServer(cfg *ServerConfig) *EtcdServer {
 type EtcdServer struct {
 	w          wait.Wait
 	done       chan struct{}
+	id         uint64
 	name       string
 	clientURLs types.URLs
 
@@ -446,7 +447,7 @@ func (s *EtcdServer) sync(timeout time.Duration) {
 // or its server is stopped.
 // TODO: take care of info fetched from cluster store after having reconfig.
 func (s *EtcdServer) publish(retryInterval time.Duration) {
-	m := *s.ClusterStore.Get().FindName(s.name)
+	m := *s.ClusterStore.Get().FindID(s.id)
 	m.ClientURLs = s.clientURLs.StringSlice()
 	b, err := json.Marshal(m)
 	if err != nil {

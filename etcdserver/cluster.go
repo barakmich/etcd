@@ -7,7 +7,6 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/coreos/etcd/pkg/flags"
 	"github.com/coreos/etcd/pkg/types"
 )
 
@@ -16,16 +15,6 @@ type Cluster map[uint64]*Member
 
 func (c Cluster) FindID(id uint64) *Member {
 	return c[id]
-}
-
-func (c Cluster) FindName(name string) *Member {
-	for _, m := range c {
-		if m.Name == name {
-			return m
-		}
-	}
-
-	return nil
 }
 
 func (c Cluster) Add(m Member) error {
@@ -48,17 +37,17 @@ func (c *Cluster) AddSlice(mems []Member) error {
 }
 
 // Pick chooses a random address from a given Member's addresses, and returns it as
-// an addressible URI. If the given member does not exist, an empty string is returned.
-func (c Cluster) Pick(id uint64) string {
+// an addressible URI. If the given member does not exist, nil is returned.
+func (c Cluster) Pick(id uint64) *url.URL {
 	if m := c.FindID(id); m != nil {
 		urls := m.PeerURLs
 		if len(urls) == 0 {
-			return ""
+			return nil
 		}
-		return urls[rand.Intn(len(urls))]
+		return &urls[rand.Intn(len(urls))]
 	}
 
-	return ""
+	return nil
 }
 
 // Set parses command line sets of names to IPs formatted like:
@@ -70,12 +59,20 @@ func (c *Cluster) Set(s string) error {
 		return err
 	}
 
+	urlSet := make(map[string]bool)
+
 	for name, urls := range v {
 		if len(urls) == 0 || urls[0] == "" {
 			return fmt.Errorf("Empty URL given for %q", name)
 		}
+		for _, u := range urls {
+			if urlSet[u] {
+				return fmt.Errorf("Adding duplicate URL to the cluster: %s", u)
+			}
+			urlSet[u] = true
+		}
 
-		m := newMember(name, types.URLs(*flags.NewURLsValue(strings.Join(urls, ","))), nil)
+		m := NewMember(name, urls)
 		err := c.Add(*m)
 		if err != nil {
 			return err
@@ -111,7 +108,7 @@ func (c Cluster) PeerURLs() []string {
 	endpoints := make([]string, 0)
 	for _, p := range c {
 		for _, addr := range p.PeerURLs {
-			endpoints = append(endpoints, addr)
+			endpoints = append(endpoints, addr.String())
 		}
 	}
 	sort.Strings(endpoints)

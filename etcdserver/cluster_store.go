@@ -92,7 +92,7 @@ func send(c *http.Client, cls ClusterStore, m raftpb.Message) {
 	// TODO (xiangli): reasonable retry logic
 	for i := 0; i < 3; i++ {
 		u := cls.Get().Pick(m.To)
-		if u == "" {
+		if u == nil {
 			// TODO: unknown peer id.. what do we do? I
 			// don't think his should ever happen, need to
 			// look into this further.
@@ -100,7 +100,7 @@ func send(c *http.Client, cls ClusterStore, m raftpb.Message) {
 			return
 		}
 
-		u = fmt.Sprintf("%s%s", u, raftPrefix)
+		url := fmt.Sprintf("%s%s", u.String(), raftPrefix)
 
 		// TODO: don't block. we should be able to have 1000s
 		// of messages out at a time.
@@ -109,7 +109,7 @@ func send(c *http.Client, cls ClusterStore, m raftpb.Message) {
 			log.Println("etcdhttp: dropping message:", err)
 			return // drop bad message
 		}
-		if httpPost(c, u, data) {
+		if httpPost(c, url, data) {
 			return // success
 		}
 		// TODO: backoff
